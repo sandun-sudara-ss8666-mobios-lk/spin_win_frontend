@@ -9,52 +9,76 @@ interface UseSocketOptions {
   onDisconnect?: () => void;
 }
 
-export function useSocket(options?: UseSocketOptions) {
-  const [isConnected, setIsConnected] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
+// Module-level singleton to prevent duplicate connections and teardown storms
+let sharedSocket: Socket | null = null;
+let activeHookCount = 0;
 
-  useEffect(() => {
+function getSharedSocket(): Socket {
+  if (!sharedSocket || sharedSocket.disconnected) {
     const staffToken = localStorage.getItem('mobios_staff_token');
     const displayToken =
       localStorage.getItem('mobios_display_token') || 'mobios-display-screen-auth-token-key-2026';
-
     const token = staffToken || displayToken;
 
-    // Connect to Socket.IO namespace /events
-    const socket = io('/events', {
+    sharedSocket = io('/events', {
       auth: { token },
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 20,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
+  }
+  return sharedSocket;
+}
 
+export function useSocket(options?: UseSocketOptions) {
+  const [isConnected, setIsConnected] = useState(() => sharedSocket?.connected ?? false);
+  const socketRef = useRef<Socket | null>(sharedSocket);
+  const room = options?.room;
+
+  useEffect(() => {
+    activeHookCount++;
+    const socket = getSharedSocket();
     socketRef.current = socket;
+    setIsConnected(socket.connected);
 
-    socket.on('connect', () => {
+    const handleConnect = () => {
       setIsConnected(true);
-      if (options?.room) {
-        socket.emit('subscribe', { room: options.room });
+      if (room) {
+        socket.emit('subscribe', { room });
       }
       options?.onConnect?.();
-    });
+    };
 
-    socket.on('disconnect', () => {
+    const handleDisconnect = () => {
       setIsConnected(false);
       options?.onDisconnect?.();
-    });
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+
+    if (socket.connected && room) {
+      socket.emit('subscribe', { room });
+    }
 
     return () => {
-      if (options?.room) {
-        socket.emit('unsubscribe', { room: options.room });
+      activeHookCount--;
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      if (room) {
+        socket.emit('unsubscribe', { room });
       }
-      socket.disconnect();
+      if (activeHookCount <= 0) {
+        activeHookCount = 0;
+        socket.disconnect();
+        sharedSocket = null;
+      }
     };
-  }, [options?.room]);
+  }, [room]);
 
   const on = useCallback((eventName: string, handler: (...args: any[]) => void) => {
-    const socket = socketRef.current;
-    if (!socket) return () => {};
-
+    const socket = socketRef.current || getSharedSocket();
     socket.on(eventName, handler);
     return () => {
       socket.off(eventName, handler);
@@ -62,7 +86,8 @@ export function useSocket(options?: UseSocketOptions) {
   }, []);
 
   const emit = useCallback((eventName: string, ...args: any[]) => {
-    socketRef.current?.emit(eventName, ...args);
+    const socket = socketRef.current || getSharedSocket();
+    socket.emit(eventName, ...args);
   }, []);
 
   return {
