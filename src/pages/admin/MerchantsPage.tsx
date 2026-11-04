@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Typography,
@@ -49,7 +49,21 @@ export const MerchantsPage: React.FC = () => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [brandColor, setBrandColor] = useState('#FF2600');
-  const [logoUrl, setLogoUrl] = useState('');
+  const logoInput = useRef<HTMLInputElement>(null);
+  const [logo, setLogo] = useState<File>();
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const [localPreview, setLocalPreview] = useState<string>();
+  const logoPreview = logo ? localPreview : removeLogo ? null : editingMerchant?.logoUrl;
+
+  useEffect(() => {
+    if (!dialogOpen || !logo) {
+      setLocalPreview(undefined);
+      return;
+    }
+    const url = URL.createObjectURL(logo);
+    setLocalPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [dialogOpen, logo]);
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -61,7 +75,8 @@ export const MerchantsPage: React.FC = () => {
     setName('');
     setDescription('');
     setBrandColor('#FF2600');
-    setLogoUrl('');
+    setLogo(undefined);
+    setRemoveLogo(false);
     setContactEmail('');
     setContactPhone('');
     setIsActive(true);
@@ -73,7 +88,8 @@ export const MerchantsPage: React.FC = () => {
     setName(merchant.name);
     setDescription(merchant.description || '');
     setBrandColor(merchant.brandColor || '#FF2600');
-    setLogoUrl(merchant.logoUrl || '');
+    setLogo(undefined);
+    setRemoveLogo(false);
     setContactEmail(merchant.contactEmail || '');
     setContactPhone(merchant.contactPhone || '');
     setIsActive(merchant.isActive);
@@ -81,26 +97,26 @@ export const MerchantsPage: React.FC = () => {
   };
 
   const createMutation = useMutation({
-    mutationFn: (data: Partial<Merchant>) => merchantsApi.create(data),
+    mutationFn: (data: Partial<Merchant>) => merchantsApi.create(data, logo),
     onSuccess: () => {
       setFeedback({ message: 'Merchant created successfully.', severity: 'success' });
       setDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['merchants'] });
     },
     onError: (err: any) => {
-      setFeedback({ message: err?.response?.data?.message || 'Failed to create merchant', severity: 'error' });
+      setFeedback({ message: err?.message || 'Failed to create merchant', severity: 'error' });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Merchant> }) => merchantsApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Partial<Merchant> }) => merchantsApi.update(id, data, logo),
     onSuccess: () => {
       setFeedback({ message: 'Merchant updated successfully.', severity: 'success' });
       setDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['merchants'] });
     },
     onError: (err: any) => {
-      setFeedback({ message: err?.response?.data?.message || 'Failed to update merchant', severity: 'error' });
+      setFeedback({ message: err?.message || 'Failed to update merchant', severity: 'error' });
     },
   });
 
@@ -126,7 +142,7 @@ export const MerchantsPage: React.FC = () => {
       name: name.trim(),
       description: description.trim() || undefined,
       brandColor,
-      logoUrl: logoUrl.trim() || undefined,
+      logoUrl: removeLogo ? null : undefined,
       contactEmail: contactEmail.trim() || undefined,
       contactPhone: contactPhone.trim() || undefined,
       isActive,
@@ -345,15 +361,50 @@ export const MerchantsPage: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={6}>
-              <TextField
-                label="Logo URL"
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                fullWidth
-                size="small"
-                placeholder="https://..."
-              />
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Merchant logo</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+                {logoPreview && (
+                  <Avatar
+                    variant="rounded"
+                    src={logoPreview}
+                    alt="Merchant logo preview"
+                    sx={{
+                      width: 88,
+                      height: 72,
+                      bgcolor: tokens.surface,
+                      border: `1px solid ${tokens.border}`,
+                      '& img': { objectFit: 'contain' },
+                    }}
+                  >
+                    <StorefrontIcon />
+                  </Avatar>
+                )}
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  <Button variant="outlined" onClick={() => logoInput.current?.click()}>
+                    {logoPreview ? 'Replace logo' : 'Upload logo'}
+                  </Button>
+                  <input
+                    ref={logoInput}
+                    type="file"
+                    hidden
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      if (file) setLogo(file);
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                  {(logo || logoPreview) && (
+                    <Button color="error" onClick={() => {
+                      setLogo(undefined);
+                      setRemoveLogo(true);
+                    }}>
+                      Remove logo
+                    </Button>
+                  )}
+                </Box>
+              </Box>
             </Grid>
           </Grid>
           <Grid container spacing={2}>

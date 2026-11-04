@@ -66,6 +66,7 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
   if (!result) return null;
 
   const isWin = result.isWin && result.reward;
+  const merchant = result.reward?.merchant;
 
   return (
     <Dialog
@@ -141,6 +142,21 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
             <Typography variant="h4" sx={{ fontWeight: 800, color: tokens.primary, my: 1 }}>
               {result.reward?.name || result.sliceLabel}
             </Typography>
+            {merchant && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1, mb: 2 }}>
+                {merchant.logoUrl && (
+                  <Box
+                    component="img"
+                    key={merchant.logoUrl}
+                    src={merchant.logoUrl}
+                    alt=""
+                    onError={(event) => { event.currentTarget.hidden = true; }}
+                    sx={{ width: 56, height: 40, objectFit: 'contain' }}
+                  />
+                )}
+                <Typography variant="body1">{merchant.name}</Typography>
+              </Box>
+            )}
             <Chip
               label={result.reward?.type || 'PRIZE'}
               size="small"

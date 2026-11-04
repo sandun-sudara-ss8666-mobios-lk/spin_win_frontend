@@ -254,6 +254,8 @@ export const JoinRegistrationPage: React.FC = () => {
                   <TextField
                     fullWidth
                     label="Sri Lankan Mobile Number"
+                    type="tel"
+                    autoComplete="tel"
                     placeholder="e.g. 077 123 4567"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}

@@ -91,6 +91,15 @@ export const participationsApi = {
   },
 };
 
+function merchantForm(data: Partial<Merchant>, logo: File) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(data)) {
+    if (value != null) form.append(key, String(value));
+  }
+  form.append('logo', logo);
+  return form;
+}
+
 export const merchantsApi = {
   list: async (all = true): Promise<Merchant[]> => {
     return apiClient.get('/merchants', { params: { all } });
@@ -98,11 +107,15 @@ export const merchantsApi = {
   getById: async (id: string): Promise<Merchant> => {
     return apiClient.get(`/merchants/${id}`);
   },
-  create: async (data: Partial<Merchant>): Promise<Merchant> => {
-    return apiClient.post('/merchants', data);
+  create: async (data: Partial<Merchant>, logo?: File): Promise<Merchant> => {
+    return logo
+      ? apiClient.postForm('/merchants', merchantForm(data, logo))
+      : apiClient.post('/merchants', data);
   },
-  update: async (id: string, data: Partial<Merchant>): Promise<Merchant> => {
-    return apiClient.patch(`/merchants/${id}`, data);
+  update: async (id: string, data: Partial<Merchant>, logo?: File): Promise<Merchant> => {
+    return logo
+      ? apiClient.patchForm(`/merchants/${id}`, merchantForm(data, logo))
+      : apiClient.patch(`/merchants/${id}`, data);
   },
   delete: async (id: string): Promise<Merchant> => {
     return apiClient.delete(`/merchants/${id}`);

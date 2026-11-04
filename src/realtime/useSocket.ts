@@ -14,7 +14,8 @@ let sharedSocket: Socket | null = null;
 let activeHookCount = 0;
 
 function getSharedSocket(): Socket {
-  if (!sharedSocket || sharedSocket.disconnected) {
+  // A disconnected socket may be reconnecting; replacing it loses its listeners.
+  if (!sharedSocket) {
     const staffToken = localStorage.getItem('mobios_staff_token');
     const displayToken =
       localStorage.getItem('mobios_display_token') || 'mobios-display-screen-auth-token-key-2026';

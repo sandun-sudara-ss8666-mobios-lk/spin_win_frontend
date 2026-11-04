@@ -21,6 +21,9 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
   const radius = size / 2;
   const center = radius;
   const wheelRadius = radius - 24; // Room for outer rim studs
+  const contentScale = size / 640;
+  const imageRadius = wheelRadius * 0.8;
+  const imageSize = Math.min(wheelRadius * 0.27, 2 * imageRadius * Math.sin(Math.PI / Math.max(2, count)) * 0.8);
 
   // Calculate slice path coordinates
   const slicePaths = useMemo(() => {
@@ -66,10 +69,9 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
     <Box
       sx={{
         position: 'relative',
-        width: size,
-        height: size,
-        maxWidth: '100%',
-        maxHeight: '100%',
+        width: '100%',
+        maxWidth: size,
+        minWidth: 0,
         aspectRatio: '1 / 1',
         display: 'flex',
         alignItems: 'center',
@@ -80,8 +82,8 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
       <Box
         sx={{
           position: 'absolute',
-          width: size - 40,
-          height: size - 40,
+          width: '92%',
+          height: '92%',
           borderRadius: '50%',
           boxShadow: isSpinning
             ? `0 0 60px 10px ${tokens.accentGlow}, 0 0 100px 20px rgba(255, 38, 0, 0.25)`
@@ -97,6 +99,9 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
         height={size}
         viewBox={`0 0 ${size} ${size}`}
         style={{
+          width: '100%',
+          height: 'auto',
+          display: 'block',
           transform: `rotate(${rotation}deg)`,
           transformOrigin: 'center center',
           willChange: 'transform',
@@ -144,10 +149,24 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
                   }}
                 />
 
+                {/* Large prize artwork at the end of the slice, inside the rim. */}
+                {(slice.iconUrl || slice.merchant?.logoUrl) && (
+                  <g transform={`rotate(${slice.midAngle}, ${center}, ${center})`}>
+                    <image
+                      href={slice.iconUrl || slice.merchant?.logoUrl || undefined}
+                      x={center - imageSize / 2}
+                      y={center - imageRadius - imageSize / 2}
+                      width={imageSize}
+                      height={imageSize}
+                      preserveAspectRatio="xMidYMid meet"
+                    />
+                  </g>
+                )}
+
                 {/* Radial text and label */}
                 <g
                   transform={`rotate(${slice.midAngle}, ${center}, ${center}) translate(${center}, ${
-                    center - wheelRadius * 0.62
+                    center - wheelRadius * 0.49
                   })`}
                 >
                   <text
@@ -159,7 +178,7 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
                     style={{
                       fontFamily: "'Plus Jakarta Sans', sans-serif",
                       fontWeight: 700,
-                      fontSize: count > 12 ? '11px' : count > 8 ? '13px' : '15px',
+                      fontSize: (count > 12 ? 11 : count > 8 ? 13 : 15) * contentScale,
                       letterSpacing: '0.02em',
                       textShadow: '0 1px 3px rgba(0,0,0,0.8)',
                     }}
@@ -171,13 +190,13 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
                   {slice.merchant && (
                     <text
                       x="0"
-                      y="16"
+                      y={20 * contentScale}
                       fill={tokens.secondary}
                       textAnchor="middle"
                       style={{
                         fontFamily: "'Inter', sans-serif",
                         fontWeight: 600,
-                        fontSize: '9px',
+                        fontSize: 9 * contentScale,
                         textTransform: 'uppercase',
                         letterSpacing: '0.06em',
                       }}
@@ -211,13 +230,13 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
         {/* Central MobiOs Badge */}
         <text
           x={center}
-          y={center - 4}
+          y={center - 4 * contentScale}
           fill="#FFFFFF"
           textAnchor="middle"
           style={{
             fontFamily: "'Plus Jakarta Sans', sans-serif",
             fontWeight: 800,
-            fontSize: '18px',
+            fontSize: 18 * contentScale,
             letterSpacing: '0.05em',
           }}
         >
@@ -225,13 +244,13 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
         </text>
         <text
           x={center}
-          y={center + 14}
+          y={center + 14 * contentScale}
           fill={tokens.primary}
           textAnchor="middle"
           style={{
             fontFamily: "'Space Grotesk', sans-serif",
             fontWeight: 700,
-            fontSize: '10px',
+            fontSize: 10 * contentScale,
             letterSpacing: '0.2em',
             textTransform: 'uppercase',
           }}
@@ -245,6 +264,9 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
         sx={{
           position: 'absolute',
           top: 0,
+          width: '7%',
+          maxWidth: 54,
+          '& svg': { width: '100%', height: 'auto', display: 'block' },
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 10,

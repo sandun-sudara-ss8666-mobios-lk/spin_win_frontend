@@ -3,6 +3,7 @@ import {
   Box,
   Typography,
   Button,
+  Chip,
   IconButton,
   Tooltip,
   CircularProgress,
@@ -12,8 +13,9 @@ import {
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
-import SpaceBarIcon from '@mui/icons-material/SpaceBar';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import { wheelApi, participationsApi, spinsApi, exhibitionsApi } from '../../api';
@@ -24,8 +26,9 @@ import { WheelCanvas } from '../../components/wheel/WheelCanvas';
 import { useWheelAnimation } from '../../components/wheel/useWheelAnimation';
 import { WinnerCelebrationModal } from '../../components/wheel/WinnerCelebrationModal';
 import { LiveQueuePanel } from '../../components/queue/LiveQueuePanel';
+import { useQueueSelection } from '../../components/queue/useQueueSelection';
 import { audioEngine } from '../../components/wheel/AudioEngine';
-import { AppNavbar } from '../../components/common/AppNavbar';
+import { DisplayBrandHeader } from '../../components/common/DisplayBrandHeader';
 
 // Safe UUID generator that works on both HTTPS and non-secure HTTP LAN IP contexts
 function generateUUID(): string {
@@ -42,7 +45,6 @@ function generateUUID(): string {
 export const WheelDisplayPage: React.FC = () => {
   const [wheelConfig, setWheelConfig] = useState<WheelConfigDisplay | null>(null);
   const [queue, setQueue] = useState<Participation[]>([]);
-  const [selectedParticipation, setSelectedParticipation] = useState<Participation | null>(null);
   const [spinResult, setSpinResult] = useState<SpinResult | null>(null);
   const [isCelebrationOpen, setIsCelebrationOpen] = useState<boolean>(false);
   const [activeDay, setActiveDay] = useState<ExhibitionDay | null>(null);
@@ -57,6 +59,32 @@ export const WheelDisplayPage: React.FC = () => {
   const { rotation, isSpinning, spinTo } = useWheelAnimation();
   const { isConnected, on } = useSocket({ room: 'room:wheel' });
   const spinInProgressRef = useRef<boolean>(false);
+  const scrollingRef = useRef(false);
+  const spinQueueRef = useRef<Participation[]>([]);
+  const [isQueueScrolling, setIsQueueScrolling] = useState(false);
+  const queueLocked = isSpinning || isSpinSubmitting || isCelebrationOpen;
+  const eligibleQueue = queue.filter((item) => item.status === 'WAITING' || item.status === 'SELECTED');
+  const { focused, selected: selectedParticipation, isSelecting, selectParticipant, syncSelection } =
+    useQueueSelection(eligibleQueue, queueLocked, setSpinError);
+  const selectionReady = !!focused && focused.id === selectedParticipation?.id && !isSelecting && !isQueueScrolling
+    && eligibleQueue.some((item) => item.id === focused.id);
+
+  const refreshQueue = useCallback(async () => {
+    const next = await participationsApi.getQueue({ status: 'WAITING,SELECTED', limit: 30 });
+    setQueue(next);
+  }, []);
+
+  const handleScrollingChange = useCallback((scrolling: boolean) => {
+    scrollingRef.current = scrolling;
+    setIsQueueScrolling(scrolling);
+  }, []);
+
+  // Catch registrations missed while disconnected, including the initial room join.
+  useEffect(() => {
+    if (isConnected) {
+      refreshQueue().catch((error: Error) => setSpinError(error.message));
+    }
+  }, [isConnected, refreshQueue]);
 
   // Load Initial Snapshot
   const loadInitialData = useCallback(async () => {
@@ -71,15 +99,11 @@ export const WheelDisplayPage: React.FC = () => {
       setWheelConfig(config);
       setQueue(queueData);
 
-      // Check for an already selected participation in the queue
-      const currentlySelected = queueData.find((p) => p.status === 'SELECTED') || null;
-      setSelectedParticipation(currentlySelected);
-
       const active = exhibitionData.days.find((d) => d.status === 'IN_PROGRESS') || null;
       setActiveDay(active);
       setIsPaused(exhibitionData.isPaused);
     } catch (err: any) {
-      console.error('Failed to load wheel stage data:', err);
+      setSpinError(err.message || 'Failed to load wheel stage data. Refresh to try again.');
     } finally {
       setIsLoading(false);
     }
@@ -92,11 +116,12 @@ export const WheelDisplayPage: React.FC = () => {
   // Real-time Event Listeners
   useEffect(() => {
     const unsubQueue = on('queue:updated', () => {
-      participationsApi.getQueue({ limit: 30 }).then(setQueue).catch(() => {});
+      refreshQueue().catch((error: Error) => setSpinError(error.message));
     });
 
     const unsubSelected = on('participation:selected', (data: Participation) => {
-      setSelectedParticipation(data);
+      if (scrollingRef.current) return;
+      syncSelection(data);
       audioEngine.playArmedChime();
     });
 
@@ -118,12 +143,12 @@ export const WheelDisplayPage: React.FC = () => {
       unsubWheel();
       unsubLifecycle();
     };
-  }, [on]);
+  }, [on, refreshQueue, syncSelection]);
 
   // Execute Spin Action (Authoritative Backend)
   const handleTriggerSpin = useCallback(async () => {
     if (isSpinning || isSpinSubmitting || spinInProgressRef.current) return;
-    if (!selectedParticipation) return;
+    if (!selectedParticipation || !selectionReady || scrollingRef.current || isCelebrationOpen) return;
     if (!activeDay) {
       setSpinError('No exhibition day is currently active.');
       return;
@@ -134,6 +159,7 @@ export const WheelDisplayPage: React.FC = () => {
     }
 
     setSpinError(null);
+    spinQueueRef.current = eligibleQueue;
     setIsSpinSubmitting(true);
     spinInProgressRef.current = true;
 
@@ -141,6 +167,7 @@ export const WheelDisplayPage: React.FC = () => {
       const idempotencyKey = generateUUID();
       const result = await spinsApi.execute(selectedParticipation.id, idempotencyKey);
       setSpinResult(result);
+      setQueue((current) => current.filter((item) => item.id !== selectedParticipation.id));
 
       // Launch high-precision GSAP wheel motion
       const sliceCount = wheelConfig?.sliceCount || 12;
@@ -151,7 +178,7 @@ export const WheelDisplayPage: React.FC = () => {
           spinInProgressRef.current = false;
           setIsCelebrationOpen(true);
           // Refetch queue to reflect completed status
-          participationsApi.getQueue({ limit: 30 }).then(setQueue).catch(() => {});
+          refreshQueue().catch((error: Error) => setSpinError(error.message));
         },
       });
     } catch (err: any) {
@@ -160,19 +187,21 @@ export const WheelDisplayPage: React.FC = () => {
     } finally {
       setIsSpinSubmitting(false);
     }
-  }, [isSpinning, isSpinSubmitting, selectedParticipation, activeDay, isPaused, wheelConfig?.sliceCount, spinTo]);
+  }, [isSpinning, isSpinSubmitting, selectedParticipation, activeDay, isPaused, wheelConfig?.sliceCount, spinTo, selectionReady, isCelebrationOpen, refreshQueue, eligibleQueue]);
 
   // Spacebar Key Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.key === ' ') {
+        if (e.repeat) { e.preventDefault(); return; }
         // Ignore if user is typing in an input or modal is open
         const activeTag = document.activeElement?.tagName.toLowerCase();
-        if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') {
+        if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select' || (document.activeElement as HTMLElement)?.isContentEditable) {
           return;
         }
 
         if (isCelebrationOpen) {
+          e.preventDefault();
           setIsCelebrationOpen(false);
           return;
         }
@@ -185,32 +214,6 @@ export const WheelDisplayPage: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleTriggerSpin, isCelebrationOpen]);
-
-  // Staff Selects Participant
-  const handleSelectParticipant = async (p: Participation) => {
-    if (isSpinning) return;
-    try {
-      const updated = await participationsApi.select(p.id);
-      setSelectedParticipation(updated);
-      audioEngine.playArmedChime();
-      participationsApi.getQueue({ limit: 30 }).then(setQueue).catch(() => {});
-    } catch (err: any) {
-      setSpinError(err.message || 'Failed to select participant');
-    }
-  };
-
-  // Staff Skips Participant
-  const handleSkipParticipant = async (id: string) => {
-    try {
-      await participationsApi.skip(id);
-      if (selectedParticipation?.id === id) {
-        setSelectedParticipation(null);
-      }
-      participationsApi.getQueue({ limit: 30 }).then(setQueue).catch(() => {});
-    } catch (err: any) {
-      setSpinError(err.message || 'Failed to skip participant');
-    }
-  };
 
   const toggleSound = () => {
     const nextState = !isMuted;
@@ -231,25 +234,81 @@ export const WheelDisplayPage: React.FC = () => {
   return (
     <Box
       sx={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
+        '@media (min-height: 1000px)': { height: '100dvh', minHeight: 0 },
+        overflowX: 'clip',
         backgroundColor: tokens.background,
         backgroundImage: `radial-gradient(circle at 40% 50%, ${tokens.accentGlow} 0%, #000000 70%)`,
         display: 'flex',
         flexDirection: 'column',
       }}
     >
-      <AppNavbar activeDay={activeDay} isConnected={isConnected} />
+      <Box component="header" sx={{ width: '100%', maxWidth: 1600, mx: 'auto', px: { xs: 1.5, sm: 3, lg: 4 }, pt: 3, flexShrink: 0,
+        '@media (min-height: 1000px)': { pt: 2 },
+      }}>
+        <Box sx={{ display: 'grid', alignItems: 'center', gap: { xs: 1, sm: 2 },
+          gridTemplateColumns: { xs: '64px minmax(0, 1fr) 64px', sm: 'minmax(0, 1fr) auto minmax(0, 1fr)' } }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, flexWrap: 'wrap',
+            alignItems: 'flex-start', gap: 1, minWidth: 0, '& .MuiChip-root': { maxWidth: '100%' } }}>
+            <Chip size="small"
+              icon={<FiberManualRecordIcon sx={{ fontSize: '10px !important', color: `${isConnected ? tokens.success : tokens.warning} !important` }} />}
+              label={isConnected ? 'LIVE' : 'CONNECTING...'}
+              sx={{ backgroundColor: alpha(isConnected ? tokens.success : tokens.warning, 0.12),
+                color: isConnected ? tokens.success : tokens.warning, fontWeight: 700, fontSize: '0.75rem' }} />
+            {activeDay && <Chip size="small" label={`Day ${activeDay.dayNumber}`}
+              sx={{ backgroundColor: alpha(tokens.secondary, 0.12), color: tokens.secondary, fontWeight: 600 }} />}
+          </Box>
+          <Box sx={{ minWidth: 0,
+            '& h1': { fontSize: 'clamp(0.875rem, 2.5vw, 2rem)', whiteSpace: 'nowrap' },
+            '& .MuiTypography-subtitle1': { fontSize: 'clamp(0.5rem, 1vw, 0.85rem)', letterSpacing: '0.08em' },
+          }}>
+            <DisplayBrandHeader />
+          </Box>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, justifySelf: 'end' }}>
+            <Tooltip title={isMuted ? 'Unmute audio' : 'Mute audio'}>
+              <IconButton aria-label={isMuted ? 'Unmute audio' : 'Mute audio'} onClick={toggleSound} sx={{ color: tokens.secondary }}>
+                {isMuted ? <VolumeOffIcon /> : <VolumeUpIcon />}
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Force refresh">
+              <IconButton aria-label="Refresh wheel stage" onClick={loadInitialData} disabled={queueLocked || isLoading} sx={{ color: tokens.secondary }}>
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Toggle fullscreen">
+              <IconButton aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={toggleFullscreen} sx={{ color: tokens.secondary }}>
+                {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
+        {isPaused && <Alert severity="warning" sx={{ mt: 2, mx: 'auto', maxWidth: 420, fontWeight: 700 }}>EXHIBITION PAUSED</Alert>}
+      </Box>
 
       {/* Main Wheel Stage Canvas Area */}
       <Box
         sx={{
           flexGrow: 1,
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: '1fr 380px', xl: '1fr 440px' },
-          gap: 3,
-          p: { xs: 2, sm: 3, lg: 4 },
+          gridTemplateColumns: 'minmax(0, 1fr)',
+          width: '100%',
+          maxWidth: 1600,
+          mx: 'auto',
+          '@media (min-width: 1200px) and (orientation: landscape)': {
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 0.6fr)',
+          },
+          gap: { xs: 3, md: 4 },
+          p: { xs: 1.5, sm: 3, lg: 4 },
           alignItems: 'center',
           position: 'relative',
+          // Fit tall displays using the actual remaining height after the header.
+          '@media (min-height: 1000px)': {
+            flex: '1 1 0%', minHeight: 0, p: 2, gap: 2, alignItems: 'stretch',
+            gridTemplateRows: 'minmax(0, 1fr) clamp(300px, 28dvh, 360px)',
+          },
+          '@media (min-height: 1000px) and (min-width: 1200px) and (orientation: landscape)': {
+            gridTemplateRows: 'minmax(0, 1fr)',
+          },
         }}
       >
         {/* Left: Wheel & Prompt Arena */}
@@ -259,73 +318,60 @@ export const WheelDisplayPage: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            minHeight: { xs: 520, lg: 'calc(100vh - 120px)' },
+            minWidth: 0,
+            width: '100%',
+            pt: 1,
+            pb: 1,
+            '@media (min-width: 1200px) and (orientation: landscape)': { minHeight: 'calc(100dvh - 160px)' },
+            '@media (min-height: 1000px)': {
+              display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto',
+              gridTemplateColumns: 'minmax(0, 1fr)', justifyContent: 'stretch',
+              minHeight: 0, height: '100%', py: 0, gap: 2,
+            },
             position: 'relative',
           }}
         >
-          {/* Wheel Controls Header */}
-          <Box
-            sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              zIndex: 5,
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Tooltip title={isMuted ? 'Unmute Audio' : 'Mute Audio'}>
-                <IconButton onClick={toggleSound} sx={{ color: tokens.secondary }}>
-                  {isMuted ? <VolumeOffIcon /> : <VolumeUpIcon />}
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Fullscreen Mode">
-                <IconButton onClick={toggleFullscreen} sx={{ color: tokens.secondary }}>
-                  {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
-                </IconButton>
-              </Tooltip>
+          {/* The size container keeps the wheel circular within both available dimensions. */}
+          <Box sx={{ width: '100%', maxWidth: 900, mx: 'auto', minWidth: 0,
+            '@media (min-height: 1000px)': {
+              height: '100%', minHeight: 0, containerType: 'size',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            },
+          }}>
+            <Box sx={{ width: '100%', '@media (min-height: 1000px)': { width: 'min(100cqw, 100cqh)' } }}>
+              {isLoading && !wheelConfig ? (
+                <Box sx={{ py: 12, textAlign: 'center' }}>
+                  <CircularProgress size={48} color="primary" />
+                  <Typography variant="body2" sx={{ color: tokens.secondary, mt: 2 }}>
+                    Loading Wheel Stage...
+                  </Typography>
+                </Box>
+              ) : wheelConfig ? (
+                <WheelCanvas
+                  slices={wheelConfig.slices}
+                  rotation={rotation}
+                  size={900}
+                  isSpinning={isSpinning}
+                />
+              ) : (
+                <Typography variant="body1" sx={{ color: tokens.error }}>
+                  No active wheel configuration available.
+                </Typography>
+              )}
             </Box>
-
-            {isPaused && (
-              <Alert severity="warning" sx={{ py: 0.2, px: 2, fontWeight: 700 }}>
-                EXHIBITION PAUSED
-              </Alert>
-            )}
           </Box>
 
-          {/* Interactive Wheel Graphic */}
-          {isLoading && !wheelConfig ? (
-            <Box sx={{ py: 12, textAlign: 'center' }}>
-              <CircularProgress size={48} color="primary" />
-              <Typography variant="body2" sx={{ color: tokens.secondary, mt: 2 }}>
-                Loading Wheel Stage...
-              </Typography>
-            </Box>
-          ) : wheelConfig ? (
-            <WheelCanvas
-              slices={wheelConfig.slices}
-              rotation={rotation}
-              size={580}
-              isSpinning={isSpinning}
-            />
-          ) : (
-            <Typography variant="body1" sx={{ color: tokens.error }}>
-              No active wheel configuration available.
-            </Typography>
-          )}
-
           {/* Spacebar microanimation call-to-action */}
-          <Box sx={{ mt: 3, textAlign: 'center', zIndex: 5 }}>
+          <Box sx={{ mt: 3, textAlign: 'center', zIndex: 5, width: '100%', maxWidth: 620,
+            justifySelf: 'center', '@media (min-height: 1000px)': { mt: 0 },
+          }}>
             {spinError && (
               <Alert severity="error" sx={{ mb: 2, maxWidth: 420 }} onClose={() => setSpinError(null)}>
                 {spinError}
               </Alert>
             )}
 
-            {selectedParticipation ? (
+            {focused ? (
               <Box
                 sx={{
                   display: 'flex',
@@ -338,7 +384,7 @@ export const WheelDisplayPage: React.FC = () => {
                   variant="contained"
                   color="primary"
                   size="large"
-                  disabled={isSpinning || isSpinSubmitting}
+                  disabled={queueLocked || !selectionReady || !activeDay || isPaused}
                   onClick={handleTriggerSpin}
                   startIcon={
                     isSpinSubmitting ? (
@@ -348,9 +394,11 @@ export const WheelDisplayPage: React.FC = () => {
                     )
                   }
                   sx={{
-                    px: 5,
+                    px: { xs: 2, sm: 5 },
+                    width: '100%',
+                    minHeight: 56,
                     py: 1.8,
-                    fontSize: '1.25rem',
+                    fontSize: { xs: '1rem', sm: '1.25rem' },
                     fontWeight: 800,
                     letterSpacing: '0.04em',
                     borderRadius: 3,
@@ -362,15 +410,15 @@ export const WheelDisplayPage: React.FC = () => {
                     transition: 'all 0.2s ease',
                   }}
                 >
-                  {isSpinning ? 'SPINNING WHEEL...' : isSpinSubmitting ? 'COMMITTING...' : 'SPIN WHEEL (OR PRESS SPACE)'}
+                  {isSpinning ? 'SPINNING…' : isSpinSubmitting ? 'STARTING…' : !selectionReady ? 'CHOOSING VISITOR…' : 'SPIN WHEEL · SPACE'}
                 </Button>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box role="status" aria-live="polite" sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" sx={{ color: tokens.heading, fontWeight: 700 }}>
-                    Ready for: <span style={{ color: tokens.primary }}>{selectedParticipation.visitorName}</span>
+                    At the wheel: <span style={{ color: tokens.primary }}>{focused.visitorName}</span>
                   </Typography>
                   <Typography variant="caption" sx={{ color: tokens.secondary, fontFamily: 'monospace' }}>
-                    ({selectedParticipation.readableRef})
+                    ({focused.readableRef})
                   </Typography>
                 </Box>
               </Box>
@@ -389,7 +437,7 @@ export const WheelDisplayPage: React.FC = () => {
               >
                 <PlayCircleOutlineIcon sx={{ color: tokens.secondary }} />
                 <Typography variant="subtitle2" sx={{ color: tokens.secondary, fontWeight: 600 }}>
-                  Select a visitor from the queue to arm the wheel
+                  Waiting for visitors to join the queue
                 </Typography>
               </Box>
             )}
@@ -397,15 +445,21 @@ export const WheelDisplayPage: React.FC = () => {
         </Box>
 
         {/* Right: Real-time Visitor Queue Side Panel */}
-        <Box sx={{ height: { xs: 460, lg: 'calc(100vh - 120px)' }, width: '100%' }}>
+        <Box sx={{ height: { xs: 440, sm: 520 }, width: '100%', minWidth: 0,
+          '@media (min-width: 900px) and (orientation: portrait)': { height: 'clamp(520px, 34dvh, 760px)' },
+          '@media (min-width: 1200px) and (orientation: landscape)': { height: 'min(740px, calc(100dvh - 160px))', minHeight: 440 },
+          '@media (min-height: 1000px)': {
+            height: '100%', minHeight: 0, '--queue-header-padding': '8px', '--queue-hint-display': 'none',
+          },
+        }}>
           <LiveQueuePanel
-            queue={queue}
-            selectedParticipation={selectedParticipation}
+            queue={queueLocked ? spinQueueRef.current : eligibleQueue}
+            selectedParticipation={focused}
             isLoading={isLoading}
-            isSpinning={isSpinning}
-            onSelect={handleSelectParticipant}
-            onSkip={handleSkipParticipant}
-            onRefresh={() => participationsApi.getQueue({ limit: 30 }).then(setQueue)}
+            isSpinning={queueLocked}
+            onSelect={(visitor) => { setSpinError(null); selectParticipant(visitor); }}
+            onScrollingChange={handleScrollingChange}
+            onRefresh={() => refreshQueue().catch((error: Error) => setSpinError(error.message))}
           />
         </Box>
       </Box>
@@ -416,7 +470,6 @@ export const WheelDisplayPage: React.FC = () => {
         result={spinResult}
         onClose={() => {
           setIsCelebrationOpen(false);
-          setSelectedParticipation(null);
         }}
       />
     </Box>

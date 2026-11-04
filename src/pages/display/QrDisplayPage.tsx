@@ -17,6 +17,7 @@ import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import { qrApi } from '../../api';
 import { useSocket } from '../../realtime/useSocket';
 import { tokens } from '../../theme/theme';
+import { DisplayBrandHeader } from '../../components/common/DisplayBrandHeader';
 
 export const QrDisplayPage: React.FC = () => {
   const [tokenData, setTokenData] = useState<{
@@ -128,7 +129,7 @@ export const QrDisplayPage: React.FC = () => {
           <Chip
             size="small"
             icon={<FiberManualRecordIcon sx={{ fontSize: '10px !important', color: `${isConnected ? tokens.success : tokens.warning} !important` }} />}
-            label={isConnected ? 'KIOSK ONLINE' : 'CONNECTING...'}
+            label={isConnected ? 'LIVE' : 'CONNECTING...'}
             sx={{
               backgroundColor: alpha(isConnected ? tokens.success : tokens.warning, 0.12),
               color: isConnected ? tokens.success : tokens.warning,
@@ -177,32 +178,10 @@ export const QrDisplayPage: React.FC = () => {
           p: { xs: 3, sm: 5 },
         }}
       >
-        {/* Brand Header */}
-        <Typography
-          variant="h3"
-          sx={{
-            fontWeight: 800,
-            letterSpacing: '-0.03em',
-            color: tokens.heading,
-            mb: 0.5,
-          }}
-        >
-          MobiOs <span style={{ color: tokens.primary }}>Spin & Win</span>
-        </Typography>
-
-        <Typography
-          variant="subtitle1"
-          sx={{
-            color: tokens.secondary,
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '0.12em',
-            fontSize: '0.85rem',
-            mb: 4,
-          }}
-        >
-          INFOTEL Exhibition 2026
-        </Typography>
+        {/* Brand Header shared with the wheel display */}
+        <Box sx={{ mb: 4 }}>
+          <DisplayBrandHeader />
+        </Box>
 
         {/* QR Code Container */}
         <Box

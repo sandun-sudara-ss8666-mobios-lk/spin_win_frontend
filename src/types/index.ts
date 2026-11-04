@@ -227,6 +227,7 @@ export interface SpinResult {
     type: RewardType;
     colorHex?: string | null;
     iconUrl?: string | null;
+    merchant?: WheelSliceVisual['merchant'];
   } | null;
   completedAt: string;
   isReplay: boolean;
