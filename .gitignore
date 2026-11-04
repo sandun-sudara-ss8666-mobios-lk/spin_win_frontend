@@ -9,8 +9,11 @@ lerna-debug.log*
 
 # Node dependencies
 node_modules
+
+# Compiled output
 dist
 dist-ssr
+build
 *.local
 
 # Environment variables
@@ -32,6 +35,11 @@ dist-ssr
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Tool caches
+.vite
+.cache
+.turbo
 
 # Test and coverage outputs
 coverage
