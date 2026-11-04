@@ -420,7 +420,7 @@ export const RewardsPage: React.FC = () => {
         <DialogTitle sx={{ fontWeight: 800, color: tokens.heading }}>
           {editingReward ? 'Edit Reward' : 'Create New Reward'}
         </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, '&&': { pt: 2 } }}>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={8}>
               <TextField

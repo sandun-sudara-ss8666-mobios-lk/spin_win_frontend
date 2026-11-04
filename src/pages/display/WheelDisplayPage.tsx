@@ -394,6 +394,7 @@ export const WheelDisplayPage: React.FC = () => {
                     )
                   }
                   sx={{
+                    my: 3,
                     px: { xs: 2, sm: 5 },
                     width: '100%',
                     minHeight: 56,
@@ -412,15 +413,6 @@ export const WheelDisplayPage: React.FC = () => {
                 >
                   {isSpinning ? 'SPINNING…' : isSpinSubmitting ? 'STARTING…' : !selectionReady ? 'CHOOSING VISITOR…' : 'SPIN WHEEL · SPACE'}
                 </Button>
-
-                <Box role="status" aria-live="polite" sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" sx={{ color: tokens.heading, fontWeight: 700 }}>
-                    At the wheel: <span style={{ color: tokens.primary }}>{focused.visitorName}</span>
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: tokens.secondary, fontFamily: 'monospace' }}>
-                    ({focused.readableRef})
-                  </Typography>
-                </Box>
               </Box>
             ) : (
               <Box
