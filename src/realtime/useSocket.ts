@@ -21,7 +21,7 @@ function getSharedSocket(): Socket {
       localStorage.getItem('mobios_display_token') || 'mobios-display-screen-auth-token-key-2026';
     const token = staffToken || displayToken;
 
-    sharedSocket = io('/events', {
+    sharedSocket = io(import.meta.env.VITE_SOCKET_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnectionAttempts: Infinity,
