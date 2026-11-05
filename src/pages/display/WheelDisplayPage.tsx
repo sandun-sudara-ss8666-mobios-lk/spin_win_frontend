@@ -27,7 +27,10 @@ import { useWheelAnimation } from '../../components/wheel/useWheelAnimation';
 import { WinnerCelebrationModal } from '../../components/wheel/WinnerCelebrationModal';
 import { LiveQueuePanel } from '../../components/queue/LiveQueuePanel';
 import { useQueueSelection } from '../../components/queue/useQueueSelection';
+import { loadSpinQueue } from '../../components/queue/load-spin-queue';
 import { audioEngine } from '../../components/wheel/AudioEngine';
+import { RewardVideoCache } from '../../components/wheel/reward-video-cache';
+import { API_BASE_URL } from '../../api/client';
 import { DisplayBrandHeader } from '../../components/common/DisplayBrandHeader';
 
 // Safe UUID generator that works on both HTTPS and non-secure HTTP LAN IP contexts
@@ -47,10 +50,14 @@ export const WheelDisplayPage: React.FC = () => {
   const [queue, setQueue] = useState<Participation[]>([]);
   const [spinResult, setSpinResult] = useState<SpinResult | null>(null);
   const [isCelebrationOpen, setIsCelebrationOpen] = useState<boolean>(false);
+  const [celebrationVideo, setCelebrationVideo] = useState<HTMLVideoElement | null>(null);
+  const [videoCache] = useState(() => new RewardVideoCache(API_BASE_URL, window.location.origin));
   const [activeDay, setActiveDay] = useState<ExhibitionDay | null>(null);
   const [isPaused, setIsPaused] = useState<boolean>(false);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isQueueLoading, setIsQueueLoading] = useState(true);
+  const queueRequestRef = useRef(0);
   const [isSpinSubmitting, setIsSpinSubmitting] = useState<boolean>(false);
   const [spinError, setSpinError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState<boolean>(audioEngine.getMuted());
@@ -63,6 +70,11 @@ export const WheelDisplayPage: React.FC = () => {
   const spinQueueRef = useRef<Participation[]>([]);
   const [isQueueScrolling, setIsQueueScrolling] = useState(false);
   const queueLocked = isSpinning || isSpinSubmitting || isCelebrationOpen;
+  useEffect(() => {
+    // Preserve a prepared video through a spin and its popup even if metadata changes.
+    if (!queueLocked) void videoCache.sync(wheelConfig?.slices ?? []);
+  }, [videoCache, wheelConfig, queueLocked]);
+  useEffect(() => () => videoCache.dispose(), [videoCache]);
   const eligibleQueue = queue.filter((item) => item.status === 'WAITING' || item.status === 'SELECTED');
   const { focused, selected: selectedParticipation, isSelecting, selectParticipant, syncSelection } =
     useQueueSelection(eligibleQueue, queueLocked, setSpinError);
@@ -70,8 +82,14 @@ export const WheelDisplayPage: React.FC = () => {
     && eligibleQueue.some((item) => item.id === focused.id);
 
   const refreshQueue = useCallback(async () => {
-    const next = await participationsApi.getQueue({ status: 'WAITING,SELECTED', limit: 30 });
-    setQueue(next);
+    const request = ++queueRequestRef.current;
+    setIsQueueLoading(true);
+    try {
+      const next = await loadSpinQueue(participationsApi.getQueue);
+      if (request === queueRequestRef.current) setQueue(next);
+    } finally {
+      if (request === queueRequestRef.current) setIsQueueLoading(false);
+    }
   }, []);
 
   const handleScrollingChange = useCallback((scrolling: boolean) => {
@@ -90,14 +108,13 @@ export const WheelDisplayPage: React.FC = () => {
   const loadInitialData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [config, queueData, exhibitionData] = await Promise.all([
+      const [config, , exhibitionData] = await Promise.all([
         wheelApi.getActiveDisplay(),
-        participationsApi.getQueue({ status: 'WAITING,SELECTED', limit: 30 }),
+        refreshQueue(),
         exhibitionsApi.getCurrent(),
       ]);
 
       setWheelConfig(config);
-      setQueue(queueData);
 
       const active = exhibitionData.days.find((d) => d.status === 'IN_PROGRESS') || null;
       setActiveDay(active);
@@ -107,7 +124,7 @@ export const WheelDisplayPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [refreshQueue]);
 
   useEffect(() => {
     loadInitialData();
@@ -176,6 +193,8 @@ export const WheelDisplayPage: React.FC = () => {
         targetSliceIndex: result.sliceIndex,
         onComplete: () => {
           spinInProgressRef.current = false;
+          // Choose once at wheel stop: never insert a late video into an open popup.
+          setCelebrationVideo(videoCache.get(result.reward));
           setIsCelebrationOpen(true);
           // Refetch queue to reflect completed status
           refreshQueue().catch((error: Error) => setSpinError(error.message));
@@ -187,7 +206,7 @@ export const WheelDisplayPage: React.FC = () => {
     } finally {
       setIsSpinSubmitting(false);
     }
-  }, [isSpinning, isSpinSubmitting, selectedParticipation, activeDay, isPaused, wheelConfig?.sliceCount, spinTo, selectionReady, isCelebrationOpen, refreshQueue, eligibleQueue]);
+  }, [isSpinning, isSpinSubmitting, selectedParticipation, activeDay, isPaused, wheelConfig?.sliceCount, spinTo, selectionReady, isCelebrationOpen, refreshQueue, eligibleQueue, videoCache]);
 
   // Spacebar Key Listener
   useEffect(() => {
@@ -220,6 +239,7 @@ export const WheelDisplayPage: React.FC = () => {
     setIsMuted(nextState);
     audioEngine.setMuted(nextState);
   };
+
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -447,7 +467,7 @@ export const WheelDisplayPage: React.FC = () => {
           <LiveQueuePanel
             queue={queueLocked ? spinQueueRef.current : eligibleQueue}
             selectedParticipation={focused}
-            isLoading={isLoading}
+            isLoading={isLoading || isQueueLoading}
             isSpinning={queueLocked}
             onSelect={(visitor) => { setSpinError(null); selectParticipant(visitor); }}
             onScrollingChange={handleScrollingChange}
@@ -460,6 +480,8 @@ export const WheelDisplayPage: React.FC = () => {
       <WinnerCelebrationModal
         open={isCelebrationOpen}
         result={spinResult}
+        video={celebrationVideo}
+        muted={isMuted}
         onClose={() => {
           setIsCelebrationOpen(false);
         }}

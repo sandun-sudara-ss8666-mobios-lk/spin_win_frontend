@@ -83,7 +83,9 @@ export const LiveQueuePanel: React.FC<LiveQueuePanelProps> = ({
         {onRefresh && (
           <Tooltip title="Refresh queue">
             <IconButton aria-label="Refresh queue" onClick={onRefresh} disabled={isLoading || isSpinning}
-              sx={{ color: tokens.secondary, width: 44, height: 44 }}><RefreshRoundedIcon /></IconButton>
+              sx={{ color: tokens.secondary, width: 44, height: 44 }}>
+              {isLoading ? <CircularProgress size={22} color="primary" aria-label="Loading visitors" /> : <RefreshRoundedIcon />}
+            </IconButton>
           </Tooltip>
         )}
       </Box>

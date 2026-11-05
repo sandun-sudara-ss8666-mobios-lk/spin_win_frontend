@@ -44,3 +44,7 @@ build
 # Test and coverage outputs
 coverage
 .nyc_output
+
+# Public environment settings (never add secrets to these files)
+.env.development
+.env.production

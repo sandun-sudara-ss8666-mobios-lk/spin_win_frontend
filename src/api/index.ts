@@ -122,6 +122,15 @@ export const merchantsApi = {
   },
 };
 
+function rewardForm(data: Record<string, unknown>, video: File) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(data)) {
+    if (value != null) form.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+  }
+  form.append('video', video);
+  return form;
+}
+
 export const rewardsApi = {
   list: async (all = true): Promise<Reward[]> => {
     return apiClient.get('/rewards', { params: { all } });
@@ -129,11 +138,11 @@ export const rewardsApi = {
   getById: async (id: string): Promise<Reward> => {
     return apiClient.get(`/rewards/${id}`);
   },
-  create: async (data: any): Promise<Reward> => {
-    return apiClient.post('/rewards', data);
+  create: async (data: any, video?: File): Promise<Reward> => {
+    return video ? apiClient.postForm('/rewards', rewardForm(data, video)) : apiClient.post('/rewards', data);
   },
-  update: async (id: string, data: any): Promise<Reward> => {
-    return apiClient.patch(`/rewards/${id}`, data);
+  update: async (id: string, data: any, video?: File): Promise<Reward> => {
+    return video ? apiClient.patchForm(`/rewards/${id}`, rewardForm(data, video)) : apiClient.patch(`/rewards/${id}`, data);
   },
   adjustStock: async (id: string, data: { quantityDelta: number; notes: string }): Promise<Reward> => {
     return apiClient.post(`/rewards/${id}/adjust-stock`, data);

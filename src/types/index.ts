@@ -113,6 +113,8 @@ export interface Reward {
   sliceColor?: string | null;
   textColor?: string | null;
   iconUrl?: string | null;
+  videoUrl?: string | null;
+  isVideoShow?: boolean;
   merchant?: Merchant | null;
   dailyAllocations?: DailyAllocation[];
   allocations?: DailyAllocation[];
@@ -133,6 +135,8 @@ export interface WheelSliceVisual {
   iconUrl?: string | null;
   isNoWin: boolean;
   rewardId?: string | null;
+  videoUrl?: string | null;
+  isVideoShow?: boolean;
   rewardName?: string;
   rewardType?: RewardType;
   merchantName?: string;
@@ -227,6 +231,8 @@ export interface SpinResult {
     type: RewardType;
     colorHex?: string | null;
     iconUrl?: string | null;
+    videoUrl?: string | null;
+    isVideoShow?: boolean;
     merchant?: WheelSliceVisual['merchant'];
   } | null;
   completedAt: string;

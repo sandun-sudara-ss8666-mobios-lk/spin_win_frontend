@@ -34,6 +34,7 @@ import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
 import { rewardsApi, merchantsApi, exhibitionsApi } from '../../api';
 import { Reward, Merchant, RewardType, InventoryMode, DistributionStrategy } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { RewardVideoUpload } from '../../components/common/RewardVideoUpload';
 import { tokens } from '../../theme/theme';
 
 export const RewardsPage: React.FC = () => {
@@ -78,10 +79,19 @@ export const RewardsPage: React.FC = () => {
   const [colorHex, setColorHex] = useState('#2A2A2E');
   const [baselineWeight, setBaselineWeight] = useState(3);
   const [isActive, setIsActive] = useState(true);
+  const [video, setVideo] = useState<File>();
+  const [removeVideo, setRemoveVideo] = useState(false);
+  const [isVideoShow, setIsVideoShow] = useState(false);
+  const [isVideoValidating, setIsVideoValidating] = useState(false);
 
   const [feedback, setFeedback] = useState<{ message: string; severity: 'success' | 'error' } | null>(null);
 
   const openCreateDialog = () => {
+    setFeedback(null);
+    setVideo(undefined);
+    setRemoveVideo(false);
+    setIsVideoShow(false);
+    setIsVideoValidating(false);
     setEditingReward(null);
     setName('');
     setShortLabel('');
@@ -99,6 +109,11 @@ export const RewardsPage: React.FC = () => {
   };
 
   const openEditDialog = (reward: Reward) => {
+    setFeedback(null);
+    setVideo(undefined);
+    setRemoveVideo(false);
+    setIsVideoShow(reward.isVideoShow ?? false);
+    setIsVideoValidating(false);
     setEditingReward(reward);
     setName(reward.name);
     setShortLabel(reward.shortLabel || reward.wheelLabel || '');
@@ -123,26 +138,26 @@ export const RewardsPage: React.FC = () => {
   };
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => rewardsApi.create(data),
+    mutationFn: (data: any) => rewardsApi.create(data, video),
     onSuccess: () => {
       setFeedback({ message: 'Reward created successfully.', severity: 'success' });
       setDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['rewards'] });
     },
     onError: (err: any) => {
-      setFeedback({ message: err?.response?.data?.message || 'Failed to create reward', severity: 'error' });
+      setFeedback({ message: err.message || 'Failed to create reward', severity: 'error' });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => rewardsApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: any }) => rewardsApi.update(id, data, video),
     onSuccess: () => {
       setFeedback({ message: 'Reward updated successfully.', severity: 'success' });
       setDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ['rewards'] });
     },
     onError: (err: any) => {
-      setFeedback({ message: err?.response?.data?.message || 'Failed to update reward', severity: 'error' });
+      setFeedback({ message: err.message || 'Failed to update reward', severity: 'error' });
     },
   });
 
@@ -160,6 +175,11 @@ export const RewardsPage: React.FC = () => {
   });
 
   const handleSaveReward = () => {
+    if (isVideoValidating || createMutation.isPending || updateMutation.isPending) return;
+    if (isVideoShow && !video && (removeVideo || !editingReward?.videoUrl)) {
+      setFeedback({ message: 'Upload a video before enabling Show video on win.', severity: 'error' });
+      return;
+    }
     if (!name.trim()) {
       setFeedback({ message: 'Reward name is required.', severity: 'error' });
       return;
@@ -178,6 +198,7 @@ export const RewardsPage: React.FC = () => {
       colorHex,
       baselineWeight: Number(baselineWeight) || 3,
       isActive,
+      isVideoShow,
     };
 
     if (inventoryMode === 'LIMITED' && distributionStrategy === 'CUSTOM_DAILY') {
@@ -185,6 +206,7 @@ export const RewardsPage: React.FC = () => {
     }
 
     if (editingReward) {
+      payload.removeVideo = removeVideo;
       updateMutation.mutate({ id: editingReward.id, data: payload });
     } else {
       createMutation.mutate(payload);
@@ -412,7 +434,7 @@ export const RewardsPage: React.FC = () => {
       {/* Create / Edit Reward Dialog */}
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={() => { if (!createMutation.isPending && !updateMutation.isPending && !isVideoValidating) setDialogOpen(false); }}
         maxWidth="md"
         fullWidth
         PaperProps={{ sx: { bgcolor: tokens.surface, border: `1px solid ${tokens.border}` } }}
@@ -421,6 +443,7 @@ export const RewardsPage: React.FC = () => {
           {editingReward ? 'Edit Reward' : 'Create New Reward'}
         </DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, '&&': { pt: 2 } }}>
+          {feedback?.severity === 'error' && <Alert severity="error">{feedback.message}</Alert>}
           <Grid container spacing={2}>
             <Grid item xs={12} sm={8}>
               <TextField
@@ -455,6 +478,13 @@ export const RewardsPage: React.FC = () => {
             multiline
             rows={2}
           />
+
+          {dialogOpen && <RewardVideoUpload
+            file={video} savedUrl={editingReward?.videoUrl} removed={removeVideo} enabled={isVideoShow}
+            disabled={createMutation.isPending || updateMutation.isPending}
+            onChange={(file, removed) => { setVideo(file); setRemoveVideo(removed); }}
+            onEnabledChange={setIsVideoShow} onValidatingChange={setIsVideoValidating}
+          />}
 
           <Grid container spacing={2}>
             <Grid item xs={12} sm={4}>
@@ -623,14 +653,14 @@ export const RewardsPage: React.FC = () => {
           />
         </DialogContent>
         <DialogActions sx={{ p: 2.5, borderTop: `1px solid ${tokens.border}` }}>
-          <Button onClick={() => setDialogOpen(false)} sx={{ color: tokens.secondary }}>
+          <Button onClick={() => setDialogOpen(false)} disabled={isVideoValidating || createMutation.isPending || updateMutation.isPending} sx={{ color: tokens.secondary }}>
             Cancel
           </Button>
           <Button
             variant="contained"
             color="primary"
             onClick={handleSaveReward}
-            disabled={createMutation.isPending || updateMutation.isPending}
+            disabled={isVideoValidating || createMutation.isPending || updateMutation.isPending}
             sx={{ fontWeight: 700 }}
           >
             {editingReward ? 'Update Reward' : 'Create Reward'}

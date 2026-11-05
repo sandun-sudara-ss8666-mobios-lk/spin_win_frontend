@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogActions,
   Typography,
   Box,
   Button,
@@ -14,23 +15,34 @@ import SentimentSatisfiedAltIcon from '@mui/icons-material/SentimentSatisfiedAlt
 import { tokens } from '../../theme/theme';
 import { SpinResult } from '../../types';
 import { audioEngine } from './AudioEngine';
+import { RewardWinVideo } from './RewardWinVideo';
 
 interface WinnerCelebrationModalProps {
   open: boolean;
   result: SpinResult | null;
   onClose: () => void;
+  video?: HTMLVideoElement | null;
+  muted?: boolean;
 }
 
 export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
   open,
   result,
   onClose,
+  video,
+  muted = false,
 }) => {
+  const [failedSpinId, setFailedSpinId] = useState<string>();
+  const showVideo = !!(open && result?.reward?.isVideoShow && video && failedSpinId !== result.spinId);
+  useEffect(() => {
+    if (!open || !result || showVideo) return;
+    if (!result.isWin) audioEngine.playNoWinChime();
+    else audioEngine.playWinFanfare();
+  }, [open, result?.spinId, result?.isWin, showVideo]);
+
   useEffect(() => {
     if (open && result) {
       if (result.isWin) {
-        audioEngine.playWinFanfare();
-
         // High-end dual confetti cannon burst
         confetti({
           particleCount: 100,
@@ -57,11 +69,9 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
         }, 300);
 
         return () => clearTimeout(timer);
-      } else {
-        audioEngine.playNoWinChime();
       }
     }
-  }, [open, result]);
+  }, [open, result?.spinId, result?.isWin]);
 
   if (!result) return null;
 
@@ -87,19 +97,19 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
         },
       }}
     >
-      <DialogContent sx={{ py: 3, px: 2 }}>
+      <DialogContent sx={{ py: showVideo ? 1.5 : 3, px: 2 }}>
         {/* Header Icon Badge */}
         <Box
           sx={{
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 72,
-            height: 72,
+            width: showVideo ? 48 : 72,
+            height: showVideo ? 48 : 72,
             borderRadius: '50%',
             backgroundColor: isWin ? alpha(tokens.primary, 0.15) : alpha(tokens.secondary, 0.12),
             color: isWin ? tokens.primary : tokens.secondary,
-            mb: 2.5,
+            mb: showVideo ? 1 : 2.5,
             boxShadow: isWin ? `0 0 25px ${tokens.accentGlow}` : 'none',
           }}
         >
@@ -111,6 +121,7 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
           variant="h3"
           sx={{
             fontWeight: 800,
+            fontSize: { xs: '1.5rem', sm: showVideo ? '2rem' : '3rem' },
             color: isWin ? tokens.heading : tokens.secondary,
             mb: 1,
             letterSpacing: '-0.02em',
@@ -119,21 +130,24 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
           {isWin ? 'CONGRATULATIONS!' : 'BETTER LUCK NEXT TIME!'}
         </Typography>
 
-        <Typography variant="body1" sx={{ color: tokens.secondary, mb: 3 }}>
+        <Typography variant="body1" sx={{ color: tokens.secondary, mb: showVideo ? 1.5 : 3 }}>
           {isWin
             ? `${result.visitorName} has won an exclusive prize!`
             : `Thank you for participating with MobiOs at INFOTEL, ${result.visitorName}.`}
         </Typography>
 
+        {showVideo && video && <RewardWinVideo key={result.spinId} video={video} muted={muted}
+          onFailure={() => setFailedSpinId(result.spinId)} />}
+
         {/* Prize Showcase Card */}
         {isWin && (
           <Box
             sx={{
-              p: 3,
+              p: showVideo ? 1.5 : 3,
               borderRadius: 3,
               backgroundColor: alpha(tokens.surface, 0.8),
               border: `1px solid ${alpha(tokens.primary, 0.3)}`,
-              mb: 3,
+              mb: showVideo ? 1.5 : 3,
             }}
           >
             <Typography variant="overline" sx={{ color: tokens.secondary, letterSpacing: '0.1em' }}>
@@ -143,7 +157,7 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
               {result.reward?.name || result.sliceLabel}
             </Typography>
             {merchant && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, mt: 2, mb: 2 }}>
                 {merchant.logoUrl && (
                   <Box
                     component="img"
@@ -151,7 +165,7 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
                     src={merchant.logoUrl}
                     alt=""
                     onError={(event) => { event.currentTarget.hidden = true; }}
-                    sx={{ width: 56, height: 40, objectFit: 'contain' }}
+                    sx={{ width: { xs: 200, sm: 260 }, maxWidth: '100%', height: { xs: 96, sm: 120 }, objectFit: 'contain' }}
                   />
                 )}
                 <Typography variant="body1">{merchant.name}</Typography>
@@ -170,25 +184,9 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
           </Box>
         )}
 
-        {/* Participant Reference & Instructions */}
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="caption" sx={{ color: tokens.secondary, display: 'block', mb: 0.5 }}>
-            PARTICIPATION REFERENCE
-          </Typography>
-          <Typography
-            variant="h6"
-            sx={{
-              fontFamily: "'Space Grotesk', sans-serif",
-              fontWeight: 700,
-              color: tokens.heading,
-              letterSpacing: '0.1em',
-            }}
-          >
-            {result.readableRef}
-          </Typography>
-        </Box>
-
-        {/* Close Button */}
+      </DialogContent>
+      <DialogActions sx={{ justifyContent: 'center', pb: 2, pt: 1 }}>
+        {/* Keep this action visible even when the video/details need scrolling. */}
         <Button
           variant="contained"
           color="primary"
@@ -203,7 +201,7 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
         >
           Next Visitor
         </Button>
-      </DialogContent>
+      </DialogActions>
     </Dialog>
   );
 };

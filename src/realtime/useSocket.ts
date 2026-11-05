@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { getSocketConfig } from './socket-config';
 
 export type SocketRoom = 'room:wheel' | 'room:qr-display' | 'room:staff-queue' | 'room:admin';
 
@@ -21,7 +22,9 @@ function getSharedSocket(): Socket {
       localStorage.getItem('mobios_display_token') || 'mobios-display-screen-auth-token-key-2026';
     const token = staffToken || displayToken;
 
-    sharedSocket = io(import.meta.env.VITE_SOCKET_URL, {
+    const config = getSocketConfig(import.meta.env.VITE_SOCKET_URL);
+    sharedSocket = io(config.url, {
+      path: config.path,
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnectionAttempts: Infinity,
