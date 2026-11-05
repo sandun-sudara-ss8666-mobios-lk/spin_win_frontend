@@ -94,6 +94,7 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
       />
 
       {/* Rotating Wheel Container */}
+      <Box sx={{ width: '100%', overflow: 'clip' }}>
       <svg
         width={size}
         height={size}
@@ -258,6 +259,7 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
           INFOTEL
         </text>
       </svg>
+      </Box>
 
       {/* Fixed Precision Pointer at Top (12 o'clock) */}
       <Box
