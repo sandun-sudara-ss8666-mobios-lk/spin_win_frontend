@@ -10,6 +10,27 @@ interface WheelCanvasProps {
   isSpinning?: boolean;
 }
 
+const splitLabel = (label: string): string[] => {
+  const trimmed = label?.trim() || '';
+  if (!trimmed) return [''];
+  const words = trimmed.split(/\s+/);
+  if (words.length <= 1) return [trimmed];
+  if (words.length === 2) return [words[0], words[1]];
+
+  let bestSplit = 1;
+  let minDiff = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const l1 = words.slice(0, i).join(' ').length;
+    const l2 = words.slice(i).join(' ').length;
+    const diff = Math.abs(l1 - l2);
+    if (diff < minDiff) {
+      minDiff = diff;
+      bestSplit = i;
+    }
+  }
+  return [words.slice(0, bestSplit).join(' '), words.slice(bestSplit).join(' ')];
+};
+
 export const WheelCanvas: React.FC<WheelCanvasProps> = ({
   slices,
   rotation,
@@ -22,8 +43,7 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
   const center = radius;
   const wheelRadius = radius - 24; // Room for outer rim studs
   const contentScale = size / 640;
-  const imageRadius = wheelRadius * 0.8;
-  const imageSize = Math.min(wheelRadius * 0.27, 2 * imageRadius * Math.sin(Math.PI / Math.max(2, count)) * 0.8);
+  const hubRadius = radius * 0.24;
 
   // Calculate slice path coordinates
   const slicePaths = useMemo(() => {
@@ -48,6 +68,8 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
       return {
         ...slice,
         pathData,
+        startAngle,
+        endAngle,
         midAngle,
       };
     });
@@ -138,6 +160,62 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
           {slicePaths.map((slice, i) => {
             const isAlternate = i % 2 === 0;
             const sliceBg = slice.backgroundColor || (isAlternate ? '#181818' : '#222222');
+            const hasLogo = Boolean(slice.iconUrl || slice.merchant?.logoUrl);
+            const logoUrl = slice.iconUrl || slice.merchant?.logoUrl || undefined;
+
+            const lines = splitLabel(slice.label);
+            const merchantName = slice.merchant?.name?.trim() || '';
+            const hasMerchant = Boolean(merchantName);
+
+            // Prize text alignment along the red centerline (midAngle)
+            const innerTextR = hubRadius + 14 * contentScale;
+            const baseFontSize = (count > 12 ? 9.5 : count > 8 ? 11 : 12.5) * contentScale;
+
+            // Logo placed at the end of the slice and top near the rim ("where has more space")
+            const logoR = wheelRadius * 0.77;
+            const sliceWidthAtLogo = 2 * logoR * Math.sin(Math.PI / Math.max(2, count));
+            const imageSize = Math.max(
+              20 * contentScale,
+              Math.min(wheelRadius * 0.24, sliceWidthAtLogo * 0.75)
+            );
+
+            // Maximum allowed length for text along the radial line before reaching the logo
+            const logoInnerR = logoR - imageSize / 2;
+            const outerTextR = hasLogo
+              ? Math.max(30 * contentScale, logoInnerR - 8 * contentScale)
+              : wheelRadius * 0.86;
+            const textR = (innerTextR + outerTextR) / 2;
+            const availableTextSpan = Math.max(24 * contentScale, outerTextR - innerTextR);
+
+            const maxLineChars = Math.max(
+              ...lines.map((l) => l.length),
+              hasMerchant ? Math.round(merchantName.length * 0.8) : 1,
+              1
+            );
+            const approxTextLen = maxLineChars * (baseFontSize * 0.62);
+            const adjustedFontSize = approxTextLen > availableTextSpan
+              ? Math.max(7.5 * contentScale, baseFontSize * (availableTextSpan / approxTextLen) * 0.95)
+              : baseFontSize;
+            const adjustedMerchantFontSize = Math.max(6.5 * contentScale, adjustedFontSize * 0.75);
+            const lineHeight = adjustedFontSize * 1.25;
+
+            // Perpendicular Y positions (local +Y is below the line when reading center-to-rim)
+            // Prize text is on the line, merchant name is below the line
+            let lineYOffsets: number[] = [];
+            let merchantYOffset = 0;
+
+            if (lines.length === 1 && hasMerchant) {
+              lineYOffsets = [-4 * contentScale];
+              merchantYOffset = adjustedMerchantFontSize + 3 * contentScale;
+            } else if (lines.length > 1 && hasMerchant) {
+              lineYOffsets = [-lineHeight, 0];
+              merchantYOffset = adjustedMerchantFontSize + 4 * contentScale;
+            } else if (lines.length === 1) {
+              lineYOffsets = [0];
+            } else {
+              lineYOffsets = [-lineHeight / 2, lineHeight / 2];
+            }
+
             return (
               <g key={slice.id || i}>
                 <path
@@ -150,60 +228,61 @@ export const WheelCanvas: React.FC<WheelCanvasProps> = ({
                   }}
                 />
 
-                {/* Large prize artwork at the end of the slice, inside the rim. */}
-                {(slice.iconUrl || slice.merchant?.logoUrl) && (
-                  <g transform={`rotate(${slice.midAngle}, ${center}, ${center})`}>
+                <g transform={`rotate(${slice.midAngle}, ${center}, ${center})`}>
+                  {/* Text on that red line (centerline), justified (textAnchor="middle") */}
+                  <g transform={`translate(${center}, ${center - textR}) rotate(-90)`}>
+                    {lines.map((lineText, lineIdx) => (
+                      <text
+                        key={lineIdx}
+                        x="0"
+                        y={lineYOffsets[lineIdx] ?? 0}
+                        fill={slice.textColor || '#FFFFFF'}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        style={{
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 700,
+                          fontSize: adjustedFontSize,
+                          letterSpacing: '0.02em',
+                          textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                        }}
+                      >
+                        {lineText}
+                      </text>
+                    ))}
+
+                    {/* Merchant name below the line */}
+                    {hasMerchant && (
+                      <text
+                        x="0"
+                        y={merchantYOffset}
+                        fill={tokens.secondary}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        style={{
+                          fontFamily: "'Inter', sans-serif",
+                          fontWeight: 600,
+                          fontSize: adjustedMerchantFontSize,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                        }}
+                      >
+                        {merchantName}
+                      </text>
+                    )}
+                  </g>
+
+                  {/* Image at the end of slice and top (where has more space, centered at midAngle) */}
+                  {hasLogo && (
                     <image
-                      href={slice.iconUrl || slice.merchant?.logoUrl || undefined}
+                      href={logoUrl}
+                      xlinkHref={logoUrl}
                       x={center - imageSize / 2}
-                      y={center - imageRadius - imageSize / 2}
+                      y={center - logoR - imageSize / 2}
                       width={imageSize}
                       height={imageSize}
                       preserveAspectRatio="xMidYMid meet"
                     />
-                  </g>
-                )}
-
-                {/* Radial text and label */}
-                <g
-                  transform={`rotate(${slice.midAngle}, ${center}, ${center}) translate(${center}, ${
-                    center - wheelRadius * 0.49
-                  })`}
-                >
-                  <text
-                    x="0"
-                    y="0"
-                    fill={slice.textColor || '#FFFFFF'}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    style={{
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontWeight: 700,
-                      fontSize: (count > 12 ? 11 : count > 8 ? 13 : 15) * contentScale,
-                      letterSpacing: '0.02em',
-                      textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-                    }}
-                  >
-                    {slice.label}
-                  </text>
-
-                  {/* Merchant tag if present */}
-                  {slice.merchant && (
-                    <text
-                      x="0"
-                      y={20 * contentScale}
-                      fill={tokens.secondary}
-                      textAnchor="middle"
-                      style={{
-                        fontFamily: "'Inter', sans-serif",
-                        fontWeight: 600,
-                        fontSize: 9 * contentScale,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                      }}
-                    >
-                      {slice.merchant.name}
-                    </text>
                   )}
                 </g>
               </g>
