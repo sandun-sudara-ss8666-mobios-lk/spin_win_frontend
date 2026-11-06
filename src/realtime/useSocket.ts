@@ -26,7 +26,7 @@ function getSharedSocket(): Socket {
     sharedSocket = io(config.url, {
       path: config.path,
       auth: { token },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,

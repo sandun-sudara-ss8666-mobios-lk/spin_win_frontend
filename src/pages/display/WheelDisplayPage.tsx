@@ -184,7 +184,11 @@ export const WheelDisplayPage: React.FC = () => {
       const idempotencyKey = generateUUID();
       const result = await spinsApi.execute(selectedParticipation.id, idempotencyKey);
       setSpinResult(result);
-      setQueue((current) => current.filter((item) => item.id !== selectedParticipation.id));
+
+      // Only remove participant from queue if spin is finalized (not a bonus spin)
+      if (!result.isSpinAgain) {
+        setQueue((current) => current.filter((item) => item.id !== selectedParticipation.id));
+      }
 
       // Launch high-precision GSAP wheel motion
       const sliceCount = wheelConfig?.sliceCount || 12;
@@ -196,8 +200,10 @@ export const WheelDisplayPage: React.FC = () => {
           // Choose once at wheel stop: never insert a late video into an open popup.
           setCelebrationVideo(videoCache.get(result.reward));
           setIsCelebrationOpen(true);
-          // Refetch queue to reflect completed status
-          refreshQueue().catch((error: Error) => setSpinError(error.message));
+          // Only refresh queue to reflect completed status when not a re-spin
+          if (!result.isSpinAgain) {
+            refreshQueue().catch((error: Error) => setSpinError(error.message));
+          }
         },
       });
     } catch (err: any) {
@@ -207,6 +213,13 @@ export const WheelDisplayPage: React.FC = () => {
       setIsSpinSubmitting(false);
     }
   }, [isSpinning, isSpinSubmitting, selectedParticipation, activeDay, isPaused, wheelConfig?.sliceCount, spinTo, selectionReady, isCelebrationOpen, refreshQueue, eligibleQueue, videoCache]);
+
+  const handleSpinAgain = useCallback(() => {
+    setIsCelebrationOpen(false);
+    setTimeout(() => {
+      handleTriggerSpin();
+    }, 80);
+  }, [handleTriggerSpin]);
 
   // Spacebar Key Listener
   useEffect(() => {
@@ -222,6 +235,12 @@ export const WheelDisplayPage: React.FC = () => {
         if (isCelebrationOpen) {
           e.preventDefault();
           setIsCelebrationOpen(false);
+          // If the outcome was another chance / spin again, press space to trigger the next spin!
+          if (spinResult?.isSpinAgain) {
+            setTimeout(() => {
+              handleTriggerSpin();
+            }, 80);
+          }
           return;
         }
 
@@ -232,7 +251,7 @@ export const WheelDisplayPage: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleTriggerSpin, isCelebrationOpen]);
+  }, [handleTriggerSpin, isCelebrationOpen, spinResult?.isSpinAgain]);
 
   const toggleSound = () => {
     const nextState = !isMuted;
@@ -431,7 +450,15 @@ export const WheelDisplayPage: React.FC = () => {
                     transition: 'all 0.2s ease',
                   }}
                 >
-                  {isSpinning ? 'SPINNING…' : isSpinSubmitting ? 'STARTING…' : !selectionReady ? 'CHOOSING VISITOR…' : 'SPIN WHEEL · SPACE'}
+                  {isSpinning
+                    ? 'SPINNING…'
+                    : isSpinSubmitting
+                    ? 'STARTING…'
+                    : !selectionReady
+                    ? 'CHOOSING VISITOR…'
+                    : spinResult?.isSpinAgain
+                    ? 'SPIN AGAIN · SPACE'
+                    : 'SPIN WHEEL · SPACE'}
                 </Button>
               </Box>
             ) : (
@@ -485,6 +512,7 @@ export const WheelDisplayPage: React.FC = () => {
         onClose={() => {
           setIsCelebrationOpen(false);
         }}
+        onSpinAgain={handleSpinAgain}
       />
     </Box>
   );

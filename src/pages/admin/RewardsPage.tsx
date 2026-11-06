@@ -189,7 +189,7 @@ export const RewardsPage: React.FC = () => {
       name: name.trim(),
       shortLabel: (shortLabel.trim() || name.trim()).slice(0, 24),
       description: description.trim() || undefined,
-      merchantId: merchantId || undefined,
+      merchantId: merchantId ? merchantId : null,
       type,
       inventoryMode,
       distributionStrategy,

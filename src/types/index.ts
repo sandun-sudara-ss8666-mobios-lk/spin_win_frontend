@@ -135,6 +135,7 @@ export interface WheelSliceVisual {
   iconUrl?: string | null;
   isNoWin: boolean;
   rewardId?: string | null;
+  description?: string | null;
   videoUrl?: string | null;
   isVideoShow?: boolean;
   rewardName?: string;
@@ -224,9 +225,11 @@ export interface SpinResult {
   sliceIndex: number;
   sliceLabel: string;
   isWin: boolean;
+  isSpinAgain?: boolean;
   reward?: {
     id: string;
     name: string;
+    description?: string | null;
     shortLabel: string;
     type: RewardType;
     colorHex?: string | null;

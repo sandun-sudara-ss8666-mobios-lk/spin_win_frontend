@@ -112,6 +112,36 @@ class SoundEngine {
     }
   }
 
+  public playBonusSpinChime() {
+    if (this.isMuted) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+
+      // Joyful ascending arpeggio for another chance: G4, C5, E5, G5
+      const notes = [392.00, 523.25, 659.25, 783.99];
+      notes.forEach((freq, index) => {
+        const osc = this.ctx!.createOscillator();
+        const gain = this.ctx!.createGain();
+
+        const startTime = this.ctx!.currentTime + index * 0.1;
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        gain.gain.setValueAtTime(0.2, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.35);
+
+        osc.connect(gain);
+        gain.connect(this.ctx!.destination);
+
+        osc.start(startTime);
+        osc.stop(startTime + 0.4);
+      });
+    } catch {
+      // AudioContext policy catch
+    }
+  }
+
   public playArmedChime() {
     if (this.isMuted) return;
     try {

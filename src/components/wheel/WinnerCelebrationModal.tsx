@@ -12,6 +12,8 @@ import {
 import confetti from 'canvas-confetti';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import SentimentSatisfiedAltIcon from '@mui/icons-material/SentimentSatisfiedAlt';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import { tokens } from '../../theme/theme';
 import { SpinResult } from '../../types';
 import { audioEngine } from './AudioEngine';
@@ -21,6 +23,7 @@ interface WinnerCelebrationModalProps {
   open: boolean;
   result: SpinResult | null;
   onClose: () => void;
+  onSpinAgain?: () => void;
   video?: HTMLVideoElement | null;
   muted?: boolean;
 }
@@ -29,20 +32,33 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
   open,
   result,
   onClose,
+  onSpinAgain,
   video,
   muted = false,
 }) => {
   const [failedSpinId, setFailedSpinId] = useState<string>();
-  const showVideo = !!(open && result?.reward?.isVideoShow && video && failedSpinId !== result.spinId);
+  const isSpinAgain = !!result?.isSpinAgain;
+  const isWin = !!(result?.isWin && result.reward && !isSpinAgain);
+  const showVideo = !!(open && result?.reward?.isVideoShow && video && failedSpinId !== result.spinId && !isSpinAgain);
+
   useEffect(() => {
     if (!open || !result || showVideo) return;
-    if (!result.isWin) audioEngine.playNoWinChime();
+    if (result.isSpinAgain) audioEngine.playBonusSpinChime();
+    else if (!result.isWin) audioEngine.playNoWinChime();
     else audioEngine.playWinFanfare();
-  }, [open, result?.spinId, result?.isWin, showVideo]);
+  }, [open, result?.spinId, result?.isWin, result?.isSpinAgain, showVideo]);
 
   useEffect(() => {
     if (open && result) {
-      if (result.isWin) {
+      if (result.isSpinAgain) {
+        // Playful cyan & gold burst for bonus spin
+        confetti({
+          particleCount: 70,
+          spread: 60,
+          origin: { y: 0.6 },
+          colors: ['#06B6D4', '#FFFFFF', '#38BDF8', '#F59E0B'],
+        });
+      } else if (result.isWin) {
         // High-end dual confetti cannon burst
         confetti({
           particleCount: 100,
@@ -71,12 +87,22 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
         return () => clearTimeout(timer);
       }
     }
-  }, [open, result?.spinId, result?.isWin]);
+  }, [open, result?.spinId, result?.isWin, result?.isSpinAgain]);
 
   if (!result) return null;
 
-  const isWin = result.isWin && result.reward;
   const merchant = result.reward?.merchant;
+  const modalBorderColor = isSpinAgain
+    ? '#06B6D4'
+    : isWin
+    ? tokens.primary
+    : tokens.border;
+
+  const modalShadow = isSpinAgain
+    ? '0 24px 60px rgba(0,0,0,0.9), 0 0 50px rgba(6, 182, 212, 0.4)'
+    : isWin
+    ? `0 24px 60px rgba(0,0,0,0.9), 0 0 50px ${tokens.accentGlow}`
+    : '0 24px 60px rgba(0,0,0,0.9)';
 
   return (
     <Dialog
@@ -87,11 +113,9 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
       PaperProps={{
         sx: {
           backgroundColor: tokens.cardBg,
-          border: `2px solid ${isWin ? tokens.primary : tokens.border}`,
+          border: `2px solid ${modalBorderColor}`,
           borderRadius: 4,
-          boxShadow: isWin
-            ? `0 24px 60px rgba(0,0,0,0.9), 0 0 50px ${tokens.accentGlow}`
-            : '0 24px 60px rgba(0,0,0,0.9)',
+          boxShadow: modalShadow,
           textAlign: 'center',
           p: 2,
         },
@@ -107,13 +131,31 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
             width: showVideo ? 48 : 72,
             height: showVideo ? 48 : 72,
             borderRadius: '50%',
-            backgroundColor: isWin ? alpha(tokens.primary, 0.15) : alpha(tokens.secondary, 0.12),
-            color: isWin ? tokens.primary : tokens.secondary,
+            backgroundColor: isSpinAgain
+              ? alpha('#06B6D4', 0.15)
+              : isWin
+              ? alpha(tokens.primary, 0.15)
+              : alpha(tokens.secondary, 0.12),
+            color: isSpinAgain
+              ? '#06B6D4'
+              : isWin
+              ? tokens.primary
+              : tokens.secondary,
             mb: showVideo ? 1 : 2.5,
-            boxShadow: isWin ? `0 0 25px ${tokens.accentGlow}` : 'none',
+            boxShadow: isSpinAgain
+              ? '0 0 25px rgba(6, 182, 212, 0.5)'
+              : isWin
+              ? `0 0 25px ${tokens.accentGlow}`
+              : 'none',
           }}
         >
-          {isWin ? <EmojiEventsIcon sx={{ fontSize: 40 }} /> : <SentimentSatisfiedAltIcon sx={{ fontSize: 40 }} />}
+          {isSpinAgain ? (
+            <AutoAwesomeIcon sx={{ fontSize: 40 }} />
+          ) : isWin ? (
+            <EmojiEventsIcon sx={{ fontSize: 40 }} />
+          ) : (
+            <SentimentSatisfiedAltIcon sx={{ fontSize: 40 }} />
+          )}
         </Box>
 
         {/* Status Heading */}
@@ -122,22 +164,61 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
           sx={{
             fontWeight: 800,
             fontSize: { xs: '1.5rem', sm: showVideo ? '2rem' : '3rem' },
-            color: isWin ? tokens.heading : tokens.secondary,
+            color: isSpinAgain ? '#06B6D4' : isWin ? tokens.heading : tokens.secondary,
             mb: 1,
             letterSpacing: '-0.02em',
           }}
         >
-          {isWin ? 'CONGRATULATIONS!' : 'BETTER LUCK NEXT TIME!'}
+          {isSpinAgain
+            ? 'BONUS SPIN!'
+            : isWin
+            ? 'CONGRATULATIONS!'
+            : 'BETTER LUCK NEXT TIME!'}
         </Typography>
 
         <Typography variant="body1" sx={{ color: tokens.secondary, mb: showVideo ? 1.5 : 3 }}>
-          {isWin
+          {isSpinAgain
+            ? `${result.visitorName}, you got another chance to spin the wheel!`
+            : isWin
             ? `${result.visitorName} has won an exclusive prize!`
             : `Thank you for participating with MobiOs at INFOTEL, ${result.visitorName}.`}
         </Typography>
 
         {showVideo && video && <RewardWinVideo key={result.spinId} video={video} muted={muted}
           onFailure={() => setFailedSpinId(result.spinId)} />}
+
+        {/* Spin Again Showcase Card */}
+        {isSpinAgain && (
+          <Box
+            sx={{
+              p: 3,
+              borderRadius: 3,
+              backgroundColor: alpha(tokens.surface, 0.8),
+              border: '1px solid rgba(6, 182, 212, 0.4)',
+              mb: 3,
+            }}
+          >
+            <Typography variant="overline" sx={{ color: '#06B6D4', letterSpacing: '0.12em', fontWeight: 800 }}>
+              ANOTHER CHANCE EARNED
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 800, color: '#FFFFFF', my: 1 }}>
+              Free Re-Spin!
+            </Typography>
+            <Typography variant="body2" sx={{ color: tokens.secondary, mb: 2 }}>
+              Press SPACE on your keyboard or tap below to spin again!
+            </Typography>
+            <Chip
+              label="SPIN AGAIN"
+              size="small"
+              sx={{
+                backgroundColor: alpha('#06B6D4', 0.15),
+                color: '#06B6D4',
+                fontWeight: 800,
+                border: '1px solid rgba(6, 182, 212, 0.4)',
+              }}
+            />
+          </Box>
+        )}
 
         {/* Prize Showcase Card */}
         {isWin && (
@@ -156,6 +237,24 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
             <Typography variant="h4" sx={{ fontWeight: 800, color: tokens.primary, my: 1 }}>
               {result.reward?.name || result.sliceLabel}
             </Typography>
+            {result.reward?.description && (
+              <Typography
+                variant="body1"
+                sx={{
+                  color: tokens.body,
+                  whiteSpace: 'pre-line',
+                  lineHeight: 1.6,
+                  mt: 1,
+                  mb: 2,
+                  fontSize: { xs: '0.95rem', sm: '1.05rem' },
+                  fontWeight: 500,
+                  maxWidth: 440,
+                  mx: 'auto',
+                }}
+              >
+                {result.reward.description}
+              </Typography>
+            )}
             {merchant && (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, mt: 2, mb: 2 }}>
                 {merchant.logoUrl && (
@@ -187,20 +286,43 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
       </DialogContent>
       <DialogActions sx={{ justifyContent: 'center', pb: 2, pt: 1 }}>
         {/* Keep this action visible even when the video/details need scrolling. */}
-        <Button
-          variant="contained"
-          color="primary"
-          size="large"
-          onClick={onClose}
-          sx={{
-            px: 4,
-            py: 1.2,
-            fontSize: '1rem',
-            fontWeight: 700,
-          }}
-        >
-          Next Visitor
-        </Button>
+        {isSpinAgain ? (
+          <Button
+            variant="contained"
+            size="large"
+            onClick={onSpinAgain || onClose}
+            startIcon={<PlayArrowRoundedIcon sx={{ fontSize: 28 }} />}
+            sx={{
+              px: 5,
+              py: 1.4,
+              fontSize: '1.1rem',
+              fontWeight: 800,
+              backgroundColor: '#06B6D4',
+              boxShadow: '0 0 25px rgba(6, 182, 212, 0.5), 0 8px 20px rgba(6, 182, 212, 0.3)',
+              '&:hover': {
+                backgroundColor: '#0891B2',
+                boxShadow: '0 0 35px rgba(6, 182, 212, 0.8)',
+              },
+            }}
+          >
+            Spin Again (SPACE)
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            onClick={onClose}
+            sx={{
+              px: 4,
+              py: 1.2,
+              fontSize: '1rem',
+              fontWeight: 700,
+            }}
+          >
+            Next Visitor
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
