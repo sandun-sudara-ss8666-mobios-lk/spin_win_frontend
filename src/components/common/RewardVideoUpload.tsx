@@ -52,7 +52,7 @@ export function RewardVideoUpload({ file, savedUrl, removed, enabled, disabled, 
     <Box sx={{ p: 2, bgcolor: tokens.cardBg, border: `1px solid ${tokens.border}`, borderRadius: 2 }}>
       <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>Win celebration video</Typography>
       <Typography variant="body2" sx={{ color: tokens.secondary, mb: 1.5 }}>
-        MP4 with H.264 video and AAC audio. Maximum 10 seconds, 15 MB, and 1080p.
+        MP4 with H.264 video and AAC audio. Maximum 15 MB and 1080p.
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
       {preview && <Box component="video" key={preview} src={preview} controls playsInline preload="metadata"

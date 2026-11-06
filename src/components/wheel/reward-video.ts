@@ -21,7 +21,7 @@ export function validateVideoFile(file: { name: string; size: number; type: stri
 }
 
 export function validateVideoDimensions(duration: number, width: number, height: number): void {
-  if (!Number.isFinite(duration) || duration <= 0 || duration > 10) throw new Error('Video must be at most 10 seconds long');
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error('Video duration must be valid');
   if (width <= 0 || height <= 0 || Math.max(width, height) > 1920 || Math.min(width, height) > 1080) {
     throw new Error('Video must be at most 1080p (1920 × 1080 or portrait equivalent)');
   }

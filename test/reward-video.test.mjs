@@ -15,12 +15,13 @@ test('rejects files exceeding the upload limit or using another format', () => {
   assert.doesNotThrow(() => validateVideoFile({ name: 'clip.MP4', size: 15_000_000, type: 'video/mp4' }));
 });
 
-test('allows 10-second landscape and portrait 1080p; rejects long, 4K, and unreadable video', () => {
+test('allows any duration landscape and portrait 1080p; rejects 4K and unreadable video', () => {
   assert.doesNotThrow(() => validateVideoDimensions(10, 1920, 1080));
-  assert.doesNotThrow(() => validateVideoDimensions(10, 1080, 1920));
-  assert.throws(() => validateVideoDimensions(10.01, 1920, 1080), /10 seconds/);
+  assert.doesNotThrow(() => validateVideoDimensions(60, 1080, 1920));
+  assert.doesNotThrow(() => validateVideoDimensions(120, 1920, 1080));
   assert.throws(() => validateVideoDimensions(10, 3840, 2160), /1080p/);
-  assert.throws(() => validateVideoDimensions(NaN, 0, 0), /10 seconds/);
+  assert.throws(() => validateVideoDimensions(NaN, 1920, 1080), /valid/i);
+  assert.throws(() => validateVideoDimensions(-1, 1920, 1080), /valid/i);
 });
 
 test('uses absolute backend and CDN video URLs without rewriting their origin or path', () => {

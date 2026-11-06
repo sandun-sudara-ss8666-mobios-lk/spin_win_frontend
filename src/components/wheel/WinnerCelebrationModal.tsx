@@ -37,9 +37,47 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
   muted = false,
 }) => {
   const [failedSpinId, setFailedSpinId] = useState<string>();
+  const [videoEnded, setVideoEnded] = useState(false);
   const isSpinAgain = !!result?.isSpinAgain;
   const isWin = !!(result?.isWin && result.reward && !isSpinAgain);
-  const showVideo = !!(open && result?.reward?.isVideoShow && video && failedSpinId !== result.spinId && !isSpinAgain);
+  const showVideo = !!(open && result?.reward?.isVideoShow && video && failedSpinId !== result.spinId && !isSpinAgain && !videoEnded);
+
+  // Reset videoEnded when modal opens or spinId changes
+  useEffect(() => {
+    setVideoEnded(false);
+  }, [result?.spinId, open]);
+
+  // Handle video naturally ending
+  useEffect(() => {
+    if (!video || !open) return;
+    const handleEnded = () => {
+      setVideoEnded(true);
+    };
+    video.addEventListener('ended', handleEnded);
+    return () => {
+      video.removeEventListener('ended', handleEnded);
+    };
+  }, [video, open]);
+
+  // Spacebar key listener: when video is playing, pressing spacebar ends the video!
+  useEffect(() => {
+    if (!open || !showVideo) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (video) {
+          video.pause();
+          try {
+            video.currentTime = 0;
+          } catch {}
+        }
+        setVideoEnded(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, [open, showVideo, video]);
 
   useEffect(() => {
     if (!open || !result || showVideo) return;
@@ -184,8 +222,19 @@ export const WinnerCelebrationModal: React.FC<WinnerCelebrationModalProps> = ({
             : `Thank you for participating with MobiOs at INFOTEL, ${result.visitorName}.`}
         </Typography>
 
-        {showVideo && video && <RewardWinVideo key={result.spinId} video={video} muted={muted}
-          onFailure={() => setFailedSpinId(result.spinId)} />}
+        {showVideo && video && (
+          <Box sx={{ mb: 2 }}>
+            <RewardWinVideo
+              key={result.spinId}
+              video={video}
+              muted={muted}
+              onFailure={() => setFailedSpinId(result.spinId)}
+            />
+            <Typography variant="caption" sx={{ color: tokens.secondary, display: 'block', mt: -1, mb: 1, fontStyle: 'italic' }}>
+              Press SPACE to skip video
+            </Typography>
+          </Box>
+        )}
 
         {/* Spin Again Showcase Card */}
         {isSpinAgain && (
