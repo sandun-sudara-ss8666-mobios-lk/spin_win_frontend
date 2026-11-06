@@ -1,7 +1,13 @@
 export const MAX_REWARD_VIDEO_BYTES = 15_000_000;
 
 export function getRewardVideoUrl(path: string, apiBase: string | undefined, origin: string): string {
-  if (/^https?:\/\//i.test(path)) return new URL(path).href;
+  if (/^https?:\/\//i.test(path)) {
+    if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/i.test(path)) {
+      const clean = path.replace(/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/(?:api\/v1\/)?/, '');
+      return new URL(`/api/v1/${clean}`, origin).href;
+    }
+    return new URL(path).href;
+  }
   // The DB stores the public path; local Nest runs without the Nginx /api/v1 prefix.
   const filename = path.split('/reward-videos/')[1];
   if (!filename || filename.includes('/') || filename.includes('..')) throw new Error('Invalid reward video URL');

@@ -9,6 +9,28 @@ export const apiClient = axios.create({
   },
 });
 
+function sanitizeMediaUrls<T>(data: T): T {
+  if (typeof data === 'string') {
+    if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/(?:api\/v1\/)?(merchant-logos|reward-videos)\/(.+)$/i.test(data)) {
+      const match = data.match(/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\/(?:api\/v1\/)?(merchant-logos|reward-videos)\/(.+)$/i);
+      if (match) {
+        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://spin-n-win.mobios.lk';
+        return `${origin}/api/v1/${match[1]}/${match[2]}` as unknown as T;
+      }
+    }
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map(sanitizeMediaUrls) as unknown as T;
+  }
+  if (data && typeof data === 'object' && Object.getPrototypeOf(data) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(data).map(([k, v]) => [k, sanitizeMediaUrls(v)])
+    ) as unknown as T;
+  }
+  return data;
+}
+
 // Request interceptor: attach Staff Bearer token or Display Token if present
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
@@ -28,13 +50,14 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// Response interceptor: unwrap standard envelope { success: true, data: T }
+// Response interceptor: unwrap standard envelope { success: true, data: T } and sanitize localhost URLs
 apiClient.interceptors.response.use(
   (response) => {
-    if (response.data && typeof response.data === 'object' && 'success' in response.data) {
-      return response.data.data;
+    let payload = response.data;
+    if (payload && typeof payload === 'object' && 'success' in payload) {
+      payload = payload.data;
     }
-    return response.data;
+    return sanitizeMediaUrls(payload);
   },
   (error: AxiosError<any>) => {
     const errorMsg =
