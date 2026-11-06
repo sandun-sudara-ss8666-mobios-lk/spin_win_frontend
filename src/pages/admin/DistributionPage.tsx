@@ -169,6 +169,82 @@ export const DistributionPage: React.FC = () => {
         </Grid>
       </Grid>
 
+      {/* Active Day Hourly Quota Monitor */}
+      {activeDay && (
+        <Card sx={{ bgcolor: tokens.surface, border: `1px solid ${tokens.border}`, borderRadius: 3, mb: 4 }}>
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: tokens.heading }}>
+                  Active Day Hourly Quotas & Real-Time Pacing ({activeDay.label})
+                </Typography>
+                <Typography variant="caption" sx={{ color: tokens.secondary }}>
+                  Daily stock divided across {activeDay.pacingStartTime} – {activeDay.pacingEndTime}. Equal weights guarantee random winning among currently eligible prizes.
+                </Typography>
+              </Box>
+              <Chip
+                label={`${pacingPercent}% of Day Elapsed`}
+                size="small"
+                sx={{ bgcolor: alpha(tokens.primary, 0.15), color: tokens.primary, fontWeight: 700 }}
+              />
+            </Box>
+
+            <TableContainer component={Paper} sx={{ bgcolor: 'transparent', boxShadow: 'none' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ '& th': { borderColor: tokens.border, color: tokens.secondary, fontWeight: 700 } }}>
+                    <TableCell>Reward Name</TableCell>
+                    <TableCell align="right">Today's Target</TableCell>
+                    <TableCell align="right">Hourly Quota Rate</TableCell>
+                    <TableCell align="right">Currently Unlocked</TableCell>
+                    <TableCell align="right">Won Today</TableCell>
+                    <TableCell align="right">Paced Buffer</TableCell>
+                    <TableCell align="center">Wheel Status</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {limitedRewards.map((reward) => {
+                    const alloc = reward.dailyAllocations?.find((a) => a.exhibitionDayId === activeDay.id);
+                    const dailyTarget = (alloc?.allocatedQuantity || 0) + (alloc?.carriedForwardQuantity || 0);
+                    const [sH, sM] = (activeDay.pacingStartTime || '09:00').split(':').map(Number);
+                    const [eH, eM] = (activeDay.pacingEndTime || '21:00').split(':').map(Number);
+                    const totalHours = Math.max(1, (eH * 60 + (eM || 0) - (sH * 60 + (sM || 0))) / 60);
+                    const hourlyRate = (dailyTarget / totalHours).toFixed(1);
+                    const unlocked = pacingPercent >= 100 ? dailyTarget : Math.max(1, Math.floor((pacingPercent / 100) * dailyTarget));
+                    const awarded = alloc?.awardedQuantity || 0;
+                    const buffer = Math.max(0, unlocked - awarded);
+                    const isExhaustedPhysical = reward.availablePhysicalStock <= 0;
+                    const isPacingHold = awarded >= unlocked && pacingPercent < 100;
+
+                    return (
+                      <TableRow key={reward.id} sx={{ '& td': { borderColor: tokens.border, color: tokens.body } }}>
+                        <TableCell sx={{ fontWeight: 700, color: tokens.heading }}>{reward.name}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600 }}>{dailyTarget}</TableCell>
+                        <TableCell align="right" sx={{ color: tokens.secondary }}>~{hourlyRate} / hr</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600, color: tokens.primary }}>{unlocked}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>{awarded}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: buffer > 0 ? '#4CAF50' : '#FF9800' }}>
+                          {buffer} left
+                        </TableCell>
+                        <TableCell align="center">
+                          {isExhaustedPhysical ? (
+                            <Chip label="Stock Depleted" size="small" sx={{ bgcolor: alpha('#F44336', 0.15), color: '#F44336', fontSize: '0.7rem' }} />
+                          ) : isPacingHold ? (
+                            <Chip label="Paced (Hold till next hr)" size="small" sx={{ bgcolor: alpha('#FF9800', 0.15), color: '#FF9800', fontSize: '0.7rem' }} />
+                          ) : (
+                            <Chip label="Eligible to Win" size="small" sx={{ bgcolor: alpha('#4CAF50', 0.15), color: '#4CAF50', fontSize: '0.7rem' }} />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Daily Allocation Matrix */}
       <Card sx={{ bgcolor: tokens.surface, border: `1px solid ${tokens.border}`, borderRadius: 3 }}>
         <CardContent sx={{ p: 3 }}>
